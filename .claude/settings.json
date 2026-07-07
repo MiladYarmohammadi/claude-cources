@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make help*)",
+      "Bash(make lint*)",
+      "Bash(make template*)",
+      "Bash(make validate*)",
+      "Bash(make package*)",
+      "Bash(make clean*)",
+      "Bash(helm lint*)",
+      "Bash(helm template*)",
+      "Bash(helm package*)",
+      "Bash(helm dependency*)",
+      "Bash(yamllint*)",
+      "Bash(kubeconform*)",
+      "Bash(hadolint*)",
+      "Bash(yq *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git tag -l*)",
+      "Bash(rtk git status*)",
+      "Bash(rtk git diff*)",
+      "Bash(rtk git log*)",
+      "Bash(rtk git show*)",
+      "Bash(rtk helm lint*)",
+      "Bash(rtk helm template*)",
+      "Bash(rtk make *)",
+      "Bash(rtk yamllint*)"
+    ],
+    "deny": [
+      "Bash(kubectl apply*)",
+      "Bash(kubectl delete*)",
+      "Bash(kubectl edit*)",
+      "Bash(kubectl patch*)",
+      "Bash(kubectl replace*)",
+      "Bash(argocd app set*)",
+      "Bash(argocd app sync*)",
+      "Bash(argocd app delete*)",
+      "Bash(helm install*)",
+      "Bash(helm upgrade*)",
+      "Bash(helm uninstall*)",
+      "Bash(helm rollback*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lint-on-edit.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
