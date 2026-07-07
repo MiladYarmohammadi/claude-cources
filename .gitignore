@@ -1,7 +1,15 @@
-/.idea/inspectionProfiles/profiles_settings.xml
-/.idea/inspectionProfiles/Project_Default.xml
-/.idea/.gitignore
-/.idea/claude-cources.iml
-/.idea/misc.xml
-/.idea/modules.xml
-/.idea/vcs.xml
+# IDE / editor state
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+
+# Claude Code: personal overrides stay local; shared config (.claude/settings.json,
+# skills, agents, hooks, .mcp.json) is committed.
+.claude/settings.local.json
+
+# Build artifacts (`make package` output, stray packaged charts)
+.packaged/
+*.tgz
