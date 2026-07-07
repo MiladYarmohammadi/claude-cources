@@ -1,0 +1,19 @@
+apiVersion: v2
+name: app
+description: >-
+  Generic production-ready application chart: Deployment, Service, Ingress,
+  HPA, PDB, NetworkPolicy, ServiceAccount and ServiceMonitor with secure
+  defaults (non-root, read-only rootfs, dropped capabilities, probes).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.27.0-0"
+home: https://gitlab.example.com/platform/ci-templates
+maintainers:
+  - name: Platform Team
+    email: platform@example.com
+keywords:
+  - application
+  - gitops
+annotations:
+  artifacthub.io/license: Apache-2.0

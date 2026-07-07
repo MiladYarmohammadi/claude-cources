@@ -1,0 +1,17 @@
+{{ include "app.fullname" . }} deployed.
+
+Image:    {{ include "app.image" . }}
+Replicas: {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} (HPA){{ else }}{{ .Values.replicaCount }}{{ end }}
+
+{{- if .Values.ingress.enabled }}
+URLs:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+No ingress enabled. Port-forward to test:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "app.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+Status:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "app.fullname" . }}
