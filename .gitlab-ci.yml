@@ -1,0 +1,56 @@
+# CI of the mother project itself: dogfood the templates against this repo.
+# Lints all YAML, lints/validates the chart, packages it on MRs and
+# publishes chart + release on v* tags.
+stages:
+  - lint
+  - test
+
+include:
+  - local: /ci/templates/base.gitlab-ci.yml
+  - local: /ci/templates/lint.gitlab-ci.yml
+  - local: /ci/templates/helm.gitlab-ci.yml
+  - local: /ci/templates/release.gitlab-ci.yml
+
+# Verify every template is syntactically valid via the GitLab CI lint API.
+ci-templates-lint:
+  stage: lint
+  image: alpine:3.21
+  extends: .rules:on-mr-and-default
+  before_script:
+    - apk add --no-cache curl jq >/dev/null
+  script:
+    - |
+      status=0
+      for f in ci/templates/*.gitlab-ci.yml; do
+        echo "==> Linting $f"
+        body=$(jq -Rs '{content: .}' < "$f")
+        result=$(curl -sf --header "PRIVATE-TOKEN: $CI_LINT_TOKEN" \
+          --header "Content-Type: application/json" \
+          --data "$body" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/ci/lint?include_merged_yaml=false") || { echo "lint API call failed"; status=1; continue; }
+        if [ "$(echo "$result" | jq -r '.valid')" != "true" ]; then
+          echo "$result" | jq -r '.errors[]'
+          status=1
+        fi
+      done
+      exit $status
+  rules:
+    # Needs CI_LINT_TOKEN (api-scope token) — skip gracefully when unset.
+    - if: '$CI_LINT_TOKEN == null'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Render the chart with each example env values file from gitops/.
+helm-template-envs:
+  stage: test
+  image:
+    name: "$HELM_IMAGE"
+    entrypoint: [""]
+  extends: .rules:on-mr-and-default
+  script:
+    - |
+      for values in gitops/apps/*/envs/*/values.yaml; do
+        echo "==> helm template with $values"
+        helm template smoke charts/app -f "$values" > /dev/null
+      done

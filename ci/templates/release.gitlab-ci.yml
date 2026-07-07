@@ -1,0 +1,29 @@
+# ============================================================================
+# release.gitlab-ci.yml — GitLab release from v* tags
+#
+# Creates a GitLab Release with an auto-generated changelog (commits since
+# the previous tag). Combine with helm.gitlab-ci.yml so the same tag also
+# publishes the chart.
+# ============================================================================
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  extends: .rules:on-tag
+  variables:
+    GIT_DEPTH: "0"                       # need history for the changelog
+  script:
+    - |
+      PREV_TAG=$(git describe --tags --abbrev=0 "$CI_COMMIT_TAG^" 2>/dev/null || true)
+      if [ -n "$PREV_TAG" ]; then
+        RANGE="$PREV_TAG..$CI_COMMIT_TAG"
+      else
+        RANGE="$CI_COMMIT_TAG"
+      fi
+      echo "## Changes ($RANGE)" > release-notes.md
+      git log --pretty='- %s (%h)' "$RANGE" >> release-notes.md
+      cat release-notes.md
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "Release $CI_COMMIT_TAG"
+    description: release-notes.md

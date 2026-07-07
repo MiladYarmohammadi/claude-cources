@@ -1,0 +1,63 @@
+# ============================================================================
+# build.gitlab-ci.yml — container image build with Kaniko (rootless, no DinD)
+#
+# Pushes:
+#   $CONTAINER_IMAGE:$IMAGE_TAG          on every MR / default-branch pipeline
+#   $CONTAINER_IMAGE:latest              additionally on the default branch
+#   $CONTAINER_IMAGE:<git tag>           additionally on v* tags
+#
+# Override points for child projects:
+#   variables: DOCKERFILE_PATH, DOCKER_CONTEXT, KANIKO_EXTRA_ARGS
+#   extends .build:image to add before_script (e.g. fetch build secrets)
+# ============================================================================
+
+.build:image:
+  stage: build
+  image:
+    name: "$KANIKO_IMAGE"
+    entrypoint: [""]
+  variables:
+    KANIKO_EXTRA_ARGS: ""
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {"auths":{"$CI_REGISTRY":{"auth":"$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')"}}}
+      EOF
+  script:
+    - |
+      DESTINATIONS="--destination $CONTAINER_IMAGE:$IMAGE_TAG"
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        DESTINATIONS="$DESTINATIONS --destination $CONTAINER_IMAGE:latest"
+      fi
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        DESTINATIONS="$DESTINATIONS --destination $CONTAINER_IMAGE:$CI_COMMIT_TAG"
+      fi
+    - |
+      /kaniko/executor \
+        --context "$DOCKER_CONTEXT" \
+        --dockerfile "$DOCKERFILE_PATH" \
+        $DESTINATIONS \
+        --cache=true \
+        --cache-repo "$CONTAINER_IMAGE/cache" \
+        --cache-ttl 168h \
+        --snapshot-mode redo \
+        --use-new-run \
+        --label "org.opencontainers.image.source=$CI_PROJECT_URL" \
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+        --label "org.opencontainers.image.created=$CI_JOB_STARTED_AT" \
+        --label "org.opencontainers.image.version=${CI_COMMIT_TAG:-$IMAGE_TAG}" \
+        $KANIKO_EXTRA_ARGS
+
+build:image:
+  extends: .build:image
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      exists:
+        - "Dockerfile"
+        - "**/Dockerfile"
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists:
+        - "Dockerfile"
+        - "**/Dockerfile"

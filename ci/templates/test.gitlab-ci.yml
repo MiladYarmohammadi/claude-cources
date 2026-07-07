@@ -1,0 +1,42 @@
+# ============================================================================
+# test.gitlab-ci.yml — language-agnostic test extension points
+#
+# The mother project cannot know your language/toolchain, so this template
+# provides hidden base jobs with the right stage, rules, artifacts and
+# coverage wiring. A child project only supplies image + script:
+#
+#   unit-tests:
+#     extends: .test:unit
+#     image: node:22-alpine
+#     script:
+#       - npm ci
+#       - npm test -- --coverage
+#
+# Both bases publish JUnit reports from $TEST_REPORT_PATH and read a
+# `coverage:` regex from COVERAGE_REGEX if set.
+# ============================================================================
+
+.test:base:
+  stage: test
+  extends: .rules:on-mr-and-default
+  variables:
+    TEST_REPORT_PATH: "reports/junit.xml"
+    COVERAGE_REPORT_PATH: "reports/coverage/cobertura-coverage.xml"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    reports:
+      junit: "$TEST_REPORT_PATH"
+      coverage_report:
+        coverage_format: cobertura
+        path: "$COVERAGE_REPORT_PATH"
+
+.test:unit:
+  extends: .test:base
+
+.test:integration:
+  extends: .test:base
+  # Integration tests often need services; child projects add them:
+  #   services: [{ name: postgres:16, alias: db }]
+  variables:
+    TEST_REPORT_PATH: "reports/junit-integration.xml"

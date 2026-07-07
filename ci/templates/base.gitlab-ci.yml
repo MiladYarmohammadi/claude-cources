@@ -1,0 +1,90 @@
+# ============================================================================
+# base.gitlab-ci.yml — shared contract for all child pipelines
+#
+# Include this FIRST in every child project. It defines:
+#   - workflow rules (when pipelines run at all)
+#   - the canonical stage list
+#   - global defaults (interruptible, retry, timeouts)
+#   - shared variables every other template relies on
+#
+# Child projects may append stages but must not rename these.
+# ============================================================================
+
+workflow:
+  rules:
+    # Skip duplicate pipelines: prefer MR pipelines over branch pipelines
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    # Allow manually triggered / scheduled / API pipelines on any branch
+    - if: '$CI_PIPELINE_SOURCE =~ /^(web|schedule|api|trigger|pipeline)$/'
+
+stages:
+  - lint
+  - test
+  - build
+  - scan
+  - package
+  - deploy
+  - release
+
+variables:
+  # ---- child-project contract (override these) -----------------------------
+  APP_NAME: "$CI_PROJECT_NAME"          # logical application name
+  CONTAINER_IMAGE: "$CI_REGISTRY_IMAGE" # image repository (no tag)
+  DOCKERFILE_PATH: "Dockerfile"
+  DOCKER_CONTEXT: "$CI_PROJECT_DIR"
+  HELM_CHART_DIR: "charts/app"          # chart path when child ships its own chart
+
+  # ---- computed image tags (do not override) --------------------------------
+  # Immutable tag for every commit; 'latest' only on the default branch.
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+
+  # ---- tool versions (pin everything; bump centrally here) ------------------
+  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2-debug"
+  TRIVY_IMAGE: "aquasec/trivy:0.58.1"
+  GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.21.2"
+  HELM_IMAGE: "alpine/helm:3.16.4"
+  KUBECONFORM_IMAGE: "ghcr.io/yannh/kubeconform:v0.6.7-alpine"
+  YAMLLINT_IMAGE: "cytopia/yamllint:1.35"
+  HADOLINT_IMAGE: "hadolint/hadolint:v2.12.0-alpine"
+  YQ_IMAGE: "mikefarah/yq:4.44.6"
+
+  # ---- pipeline behaviour ----------------------------------------------------
+  GIT_DEPTH: "50"
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: "fast"
+  CACHE_COMPRESSION_LEVEL: "fast"
+
+default:
+  interruptible: true                   # cancel superseded pipelines on push
+  timeout: 30m
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+# ----------------------------------------------------------------------------
+# Reusable rule sets. Extend these instead of copy-pasting rules.
+# ----------------------------------------------------------------------------
+.rules:on-mr-and-default:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+.rules:on-default-branch:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+.rules:on-tag:
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
+
+.rules:manual-on-default-branch:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: false

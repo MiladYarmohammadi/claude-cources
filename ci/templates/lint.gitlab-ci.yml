@@ -1,0 +1,76 @@
+# ============================================================================
+# lint.gitlab-ci.yml — static checks that need no build
+#
+# Jobs are skipped automatically when the files they check don't exist,
+# so this template is safe to include in every project.
+# ============================================================================
+
+yamllint:
+  stage: lint
+  image: "$YAMLLINT_IMAGE"
+  extends: .rules:on-mr-and-default
+  script:
+    # Use the child project's .yamllint if present, otherwise a sane default.
+    - |
+      if [ ! -f .yamllint ] && [ ! -f .yamllint.yml ] && [ ! -f .yamllint.yaml ]; then
+        printf 'extends: default\nrules:\n  line-length:\n    max: 140\n  document-start: disable\n  comments:\n    min-spaces-from-content: 1\n' > .yamllint
+      fi
+    - yamllint .
+
+hadolint:
+  stage: lint
+  image:
+    name: "$HADOLINT_IMAGE"
+    entrypoint: [""]
+  extends: .rules:on-mr-and-default
+  rules:
+    - exists:
+        - "Dockerfile"
+        - "**/Dockerfile"
+  script:
+    - hadolint --failure-threshold warning "$DOCKERFILE_PATH"
+
+helm-lint:
+  stage: lint
+  image:
+    name: "$HELM_IMAGE"
+    entrypoint: [""]
+  extends: .rules:on-mr-and-default
+  rules:
+    - exists:
+        - "charts/**/Chart.yaml"
+  script:
+    - |
+      for chart in $(find charts -name Chart.yaml -maxdepth 3 -exec dirname {} \;); do
+        echo "==> Linting $chart"
+        helm dependency build "$chart" 2>/dev/null || true
+        helm lint --strict "$chart"
+      done
+
+# Render the chart and validate every manifest against the Kubernetes schema.
+kubeconform:
+  stage: lint
+  image:
+    name: "$HELM_IMAGE"
+    entrypoint: [""]
+  extends: .rules:on-mr-and-default
+  variables:
+    KUBECONFORM_VERSION: "0.6.7"
+    KUBERNETES_VERSION: "1.31.0"        # schema version to validate against
+  rules:
+    - exists:
+        - "charts/**/Chart.yaml"
+  script:
+    - apk add --no-cache curl tar >/dev/null
+    - curl -sSfL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz -C /usr/local/bin kubeconform
+    - |
+      for chart in $(find charts -name Chart.yaml -maxdepth 3 -exec dirname {} \;); do
+        echo "==> Validating rendered manifests of $chart"
+        helm dependency build "$chart" 2>/dev/null || true
+        helm template test-release "$chart" \
+          | kubeconform -strict -summary \
+              -kubernetes-version "$KUBERNETES_VERSION" \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              -ignore-missing-schemas
+      done

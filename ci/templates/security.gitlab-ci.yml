@@ -1,0 +1,64 @@
+# ============================================================================
+# security.gitlab-ci.yml — secret, dependency, config and image scanning
+#
+# gitleaks        secret detection over git history of the change
+# trivy:fs        vulnerable dependencies + IaC misconfig in the repo
+# trivy:image     vulnerabilities in the image built by build:image
+#
+# Severity gate: pipelines fail on CRITICAL findings by default.
+# Loosen/tighten per project with TRIVY_SEVERITY / TRIVY_EXIT_ON.
+# ============================================================================
+
+gitleaks:
+  stage: scan
+  image:
+    name: "$GITLEAKS_IMAGE"
+    entrypoint: [""]
+  extends: .rules:on-mr-and-default
+  variables:
+    GIT_DEPTH: "0"                       # full history for accurate detection
+  script:
+    - gitleaks detect --source . --verbose --redact --exit-code 1
+
+.trivy:base:
+  stage: scan
+  image:
+    name: "$TRIVY_IMAGE"
+    entrypoint: [""]
+  variables:
+    TRIVY_SEVERITY: "HIGH,CRITICAL"      # severities to report
+    TRIVY_EXIT_ON: "CRITICAL"            # severities that fail the job
+    TRIVY_CACHE_DIR: ".trivycache"
+    TRIVY_NO_PROGRESS: "true"
+  cache:
+    key: trivy-db
+    paths:
+      - .trivycache
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - trivy-report.json
+
+trivy:fs:
+  extends:
+    - .trivy:base
+    - .rules:on-mr-and-default
+  script:
+    # Report all HIGH/CRITICAL, but only fail on TRIVY_EXIT_ON severities.
+    - trivy fs --scanners vuln,misconfig,secret --severity "$TRIVY_SEVERITY" --format json --output trivy-report.json .
+    - trivy fs --scanners vuln,misconfig,secret --severity "$TRIVY_EXIT_ON" --exit-code 1 .
+
+trivy:image:
+  extends: .trivy:base
+  needs: ["build:image"]
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      exists: { paths: ["Dockerfile", "**/Dockerfile"] }
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      exists: { paths: ["Dockerfile", "**/Dockerfile"] }
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/'
+  script:
+    - export TRIVY_USERNAME="$CI_REGISTRY_USER" TRIVY_PASSWORD="$CI_REGISTRY_PASSWORD"
+    - trivy image --severity "$TRIVY_SEVERITY" --format json --output trivy-report.json "$CONTAINER_IMAGE:$IMAGE_TAG"
+    - trivy image --severity "$TRIVY_EXIT_ON" --exit-code 1 --ignore-unfixed "$CONTAINER_IMAGE:$IMAGE_TAG"
