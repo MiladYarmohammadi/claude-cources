@@ -1,0 +1,36 @@
+# ============================================================================
+# Example .gitlab-ci.yml of a child project (a Node.js service here).
+# Copy this into your service repo and adjust APP_NAME + the test job.
+# ============================================================================
+
+include:
+  - project: platform/ci-templates       # adjust to where the mother repo lives
+    ref: v1.0.0                          # pin a tag — never 'main'
+    file:
+      - /ci/templates/base.gitlab-ci.yml
+      - /ci/templates/lint.gitlab-ci.yml
+      - /ci/templates/test.gitlab-ci.yml
+      - /ci/templates/build.gitlab-ci.yml
+      - /ci/templates/security.gitlab-ci.yml
+      - /ci/templates/deploy-gitops.gitlab-ci.yml
+      - /ci/templates/release.gitlab-ci.yml
+
+variables:
+  APP_NAME: demo-app
+  # GITOPS_REPO and GITOPS_TOKEN are set as group-level CI/CD variables.
+
+# --- child project supplies its own tests via the provided base jobs --------
+unit-tests:
+  extends: .test:unit
+  image: node:22-alpine
+  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+  script:
+    - npm ci
+    - npm test -- --coverage --reporters=default --reporters=jest-junit
+  variables:
+    JEST_JUNIT_OUTPUT_FILE: reports/junit.xml
+
+# --- example override: give the image build extra args ----------------------
+build:image:
+  variables:
+    KANIKO_EXTRA_ARGS: "--build-arg NODE_ENV=production"
