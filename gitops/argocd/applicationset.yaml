@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: workloads
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    # One Application per apps/<app>/envs/<env> directory in the GitOps repo
+    - git:
+        repoURL: https://gitlab.example.com/platform/gitops.git
+        revision: main
+        directories:
+          - path: apps/*/envs/*
+
+  template:
+    metadata:
+      # apps/payments/envs/dev -> payments-dev
+      name: "{{ index .path.segments 1 }}-{{ index .path.segments 3 }}"
+      labels:
+        app.kubernetes.io/name: "{{ index .path.segments 1 }}"
+        env: "{{ index .path.segments 3 }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: workloads
+      sources:
+        # Generic chart from the mother project's Helm registry
+        - repoURL: https://gitlab.example.com/api/v4/projects/platform%2Fci-templates/packages/helm/stable
+          chart: app
+          targetRevision: 1.0.0
+          helm:
+            releaseName: "{{ index .path.segments 1 }}"
+            valueFiles:
+              - "$values/{{ .path.path }}/values.yaml"
+        # Env values (incl. image.tag written by CI) from the GitOps repo
+        - repoURL: https://gitlab.example.com/platform/gitops.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ index .path.segments 1 }}-{{ index .path.segments 3 }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
+      # Surface image tag in the Argo CD UI
+      info:
+        - name: source
+          value: "{{ .path.path }}"

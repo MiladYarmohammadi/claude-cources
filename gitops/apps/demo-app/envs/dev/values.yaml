@@ -1,0 +1,25 @@
+# demo-app / dev — only env-specific overrides; chart defaults do the rest.
+image:
+  repository: registry.gitlab.example.com/team/demo-app
+  tag: "0000000"   # written by CI (deploy-gitops template) — do not edit by hand
+
+replicaCount: 1
+
+podDisruptionBudget:
+  enabled: false
+
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: demo-app.dev.example.com
+      paths:
+        - path: /
+  tls:
+    - secretName: demo-app-tls
+      hosts: [demo-app.dev.example.com]
+
+env:
+  - name: LOG_LEVEL
+    value: debug

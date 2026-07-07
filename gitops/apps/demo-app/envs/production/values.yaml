@@ -1,0 +1,44 @@
+# demo-app / production
+image:
+  repository: registry.gitlab.example.com/team/demo-app
+  tag: "0000000"   # written by CI on manual promotion — do not edit by hand
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector: {}
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector: {}
+
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: demo-app.example.com
+      paths:
+        - path: /
+  tls:
+    - secretName: demo-app-tls
+      hosts: [demo-app.example.com]
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true

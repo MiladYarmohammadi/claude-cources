@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workloads
+  namespace: argocd
+  # Keep the project if the manifest is pruned by accident
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Application workloads deployed via the platform templates
+
+  sourceRepos:
+    - https://gitlab.example.com/platform/gitops.git
+    # Helm registry of the mother project (generic 'app' chart)
+    - https://gitlab.example.com/api/v4/projects/platform%2Fci-templates/packages/helm/stable
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      # Apps land in <app>-<env> namespaces; nothing cluster-scoped allowed
+      namespace: "*"
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: rbac.authorization.k8s.io
+      kind: Role
+
+  orphanedResources:
+    warn: true
+
+  roles:
+    - name: readonly
+      description: Read-only access for developers
+      policies:
+        - p, proj:workloads:readonly, applications, get, workloads/*, allow
+      groups:
+        - developers
+    - name: deployer
+      description: Sync access for the platform team
+      policies:
+        - p, proj:workloads:deployer, applications, sync, workloads/*, allow
+      groups:
+        - platform-team
